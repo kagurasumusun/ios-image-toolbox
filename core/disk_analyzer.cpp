@@ -8,6 +8,7 @@
 #include "analysis.hpp"
 #include "carving.hpp"
 #include "diff_engine.hpp"
+#include "signature_scanner.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -379,6 +380,28 @@ size_t disk_analyzer_carve_files(DiskDeviceHandle* handle, uint64_t offset, uint
         out_carved[i].extension[sizeof(out_carved[i].extension) - 1] = '\0';
     }
 
+    return count;
+}
+
+size_t disk_analyzer_scan_signatures(DiskDeviceHandle* handle, uint64_t offset, uint64_t length, CSignatureHit* out_hits, size_t max_count) {
+    if (!handle || !handle->dev || !out_hits || max_count == 0) return 0;
+
+    auto hits = SignatureScanner::Scan(*handle->dev, offset, length, max_count);
+    size_t count = std::min(max_count, hits.size());
+    for (size_t i = 0; i < count; ++i) {
+        const auto& src = hits[i];
+        CSignatureHit& dst = out_hits[i];
+        dst.offset = src.offset;
+        dst.confidence = src.confidence;
+        std::strncpy(dst.format, src.format.c_str(), sizeof(dst.format) - 1);
+        dst.format[sizeof(dst.format) - 1] = '\0';
+        std::strncpy(dst.category, src.category.c_str(), sizeof(dst.category) - 1);
+        dst.category[sizeof(dst.category) - 1] = '\0';
+        std::strncpy(dst.description, src.description.c_str(), sizeof(dst.description) - 1);
+        dst.description[sizeof(dst.description) - 1] = '\0';
+        std::strncpy(dst.extension, src.extension.c_str(), sizeof(dst.extension) - 1);
+        dst.extension[sizeof(dst.extension) - 1] = '\0';
+    }
     return count;
 }
 

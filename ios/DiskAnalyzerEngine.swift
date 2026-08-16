@@ -33,6 +33,16 @@ public struct SearchResultModel: Identifiable {
     public let snippet: String
 }
 
+public struct SignatureHitModel: Identifiable, Hashable {
+    public var id: String { "\(offset)-\(format)-\(description)" }
+    public let offset: UInt64
+    public let format: String
+    public let category: String
+    public let description: String
+    public let extensionName: String
+    public let confidence: UInt32
+}
+
 public struct CarvedFileModel: Identifiable {
     public var id: UInt64 { offset }
     public let offset: UInt64
@@ -82,6 +92,7 @@ public class DiskAnalyzerEngine: ObservableObject {
     @Published public var currentPathFiles: [FileEntryModel] = []
     @Published public var hexRows: [HexRowModel] = []
     @Published public var searchResults: [SearchResultModel] = []
+    @Published public var signatureHits: [SignatureHitModel] = []
     @Published public var carvedFiles: [CarvedFileModel] = []
     @Published public var lastChecksums: ChecksumModel?
     @Published public var currentEntropy: Double = 0.0
@@ -127,6 +138,7 @@ public class DiskAnalyzerEngine: ObservableObject {
         loadHexView(offset: 0, size: 512)
         calculateEntropy(offset: 0, size: min(totalSize, 1024 * 1024))
         classifyRegions(offset: 0, length: min(totalSize, 64 * 1024 * 1024), regionSize: 1024 * 1024)
+        scanSignatures(offset: 0, length: min(totalSize, 256 * 1024 * 1024))
         statusMessage = "Loaded and profiled \(URL(fileURLWithPath: path).lastPathComponent)"
         return true
     }
@@ -150,6 +162,7 @@ public class DiskAnalyzerEngine: ObservableObject {
         filesystemCandidates.removeAll()
         hexRows.removeAll()
         searchResults.removeAll()
+        signatureHits.removeAll()
         carvedFiles.removeAll()
         lastChecksums = nil
         mountedFsName = "None"
@@ -262,6 +275,21 @@ public class DiskAnalyzerEngine: ObservableObject {
             let r = cResults[i]
             let snip = withUnsafeBytes(of: r.snippet) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
             return SearchResultModel(offset: r.offset, length: r.match_length, snippet: snip)
+        }
+    }
+
+    public func scanSignatures(offset: UInt64, length: UInt64) {
+        guard let dev = deviceHandle else { return }
+        var cHits = [CSignatureHit](repeating: CSignatureHit(), count: 256)
+        let count = disk_analyzer_scan_signatures(dev, offset, length, &cHits, 256)
+
+        signatureHits = (0..<count).map { i in
+            let h = cHits[i]
+            let format = withUnsafeBytes(of: h.format) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            let category = withUnsafeBytes(of: h.category) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            let description = withUnsafeBytes(of: h.description) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            let ext = withUnsafeBytes(of: h.extension) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            return SignatureHitModel(offset: h.offset, format: format, category: category, description: description, extensionName: ext, confidence: h.confidence)
         }
     }
 

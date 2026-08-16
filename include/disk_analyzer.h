@@ -85,6 +85,15 @@ typedef struct CRegionSummary {
     char kind[24];
 } CRegionSummary;
 
+typedef struct CSignatureHit {
+    uint64_t offset;
+    char format[32];
+    char category[32];
+    char description[128];
+    char extension[16];
+    uint32_t confidence;
+} CSignatureHit;
+
 typedef struct CCarvedFile {
     uint64_t offset;
     uint64_t size_bytes;
@@ -133,6 +142,7 @@ bool disk_analyzer_calculate_checksums(DiskDeviceHandle* handle, uint64_t offset
 const char* disk_analyzer_detect_magic(DiskDeviceHandle* handle, uint64_t offset);
 
 size_t disk_analyzer_carve_files(DiskDeviceHandle* handle, uint64_t offset, uint64_t length, CCarvedFile* out_carved, size_t max_count);
+size_t disk_analyzer_scan_signatures(DiskDeviceHandle* handle, uint64_t offset, uint64_t length, CSignatureHit* out_hits, size_t max_count);
 size_t disk_analyzer_diff_devices(DiskDeviceHandle* handle1, DiskDeviceHandle* handle2, uint64_t offset, uint64_t length, CDiffBlock* out_diffs, size_t max_count);
 
 #ifdef __cplusplus

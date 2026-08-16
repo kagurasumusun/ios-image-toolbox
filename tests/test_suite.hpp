@@ -17,5 +17,6 @@ void TestPartition();
 void TestFilesystem();
 void TestQcow2();
 void TestAnalysis();
+void TestSignatureScanner();
 
 #endif // TEST_SUITE_HPP
