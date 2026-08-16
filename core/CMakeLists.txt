@@ -9,6 +9,5 @@ target_include_directories(disk_analyzer_core PUBLIC
 )
 
 find_package(ZLIB REQUIRED)
-find_package(OpenSSL REQUIRED)
 
-target_link_libraries(disk_analyzer_core PUBLIC ZLIB::ZLIB OpenSSL::Crypto)
+target_link_libraries(disk_analyzer_core PUBLIC ZLIB::ZLIB)

@@ -1,0 +1,104 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [ main, master, feat/* ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  cpp-core-test:
+    name: Build & Test C++ Core (Linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential zlib1g-dev
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build C++ Core & CLI
+        run: cmake --build build --config Release
+
+      - name: Run CTest Unit Tests
+        run: ctest --test-dir build --output-on-failure
+
+  ios-build-ipa:
+    name: Build iOS 18+ Unsigned IPA
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+
+      - name: Configure C++ Core for iOS Static Library
+        run: |
+          mkdir -p build_ios
+          cd build_ios
+          cmake .. \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_SYSTEM_PROCESSOR=arm64 \
+            -DIPHONEOS_DEPLOYMENT_TARGET=18.0
+
+      - name: Build C++ Core Static Library for iOS
+        run: |
+          cmake --build build_ios --config Release
+
+      - name: Create Unsigned iOS 18+ IPA
+        run: |
+          mkdir -p build_app/Payload/DiskAnalyzer.app
+
+          # Compile Swift & SwiftUI components for iOS 18 physical device (arm64)
+          xcrun -sdk iphoneos swiftc \
+            -target arm64-apple-ios18.0 \
+            -import-objc-header include/disk_analyzer.h \
+            ios/*.swift \
+            -L build_ios/core \
+            -ldisk_analyzer_core -lz \
+            -o build_app/Payload/DiskAnalyzer.app/DiskAnalyzer
+
+          cat << 'EOF' > build_app/Payload/DiskAnalyzer.app/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>DiskAnalyzer</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.disk-analyzer.app</string>
+              <key>CFBundleName</key>
+              <string>DiskAnalyzer</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>MinimumOSVersion</key>
+              <string>18.0</string>
+              <key>UIDeviceFamily</key>
+              <array>
+                  <integer>1</integer>
+                  <integer>2</integer>
+              </array>
+          </dict>
+          </plist>
+          EOF
+
+          cd build_app
+          zip -r DiskAnalyzer-iOS18-Unsigned.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiskAnalyzer-iOS18-Unsigned.ipa
+          path: build_app/DiskAnalyzer-iOS18-Unsigned.ipa

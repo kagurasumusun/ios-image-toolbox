@@ -1,4 +1,5 @@
 #include "analysis.hpp"
+#include "sha256.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -6,8 +7,6 @@
 #include <iomanip>
 #include <cctype>
 #include <zlib.h>
-#include <openssl/md5.h>
-#include <openssl/sha.h>
 
 namespace disk_analyzer {
 
@@ -87,7 +86,7 @@ std::vector<SearchResult> SearchEngine::SearchBytes(IBlockDevice& device,
 
     uint64_t search_len = (max_bytes > 0) ? std::min<uint64_t>(max_bytes, dev_size - start_offset) : (dev_size - start_offset);
 
-    constexpr size_t CHUNK_SIZE = 1024 * 1024; // 1MB chunked streaming
+    constexpr size_t CHUNK_SIZE = 1024 * 1024;
     std::vector<uint8_t> chunk(CHUNK_SIZE + pattern.size());
 
     uint64_t processed = 0;
@@ -104,7 +103,6 @@ std::vector<SearchResult> SearchEngine::SearchBytes(IBlockDevice& device,
                 res.offset = curr_offset + i;
                 res.match_length = pattern.size();
 
-                // Snippet
                 size_t snip_len = std::min<size_t>(16, read_bytes - i);
                 std::string snip;
                 for (size_t s = 0; s < snip_len; ++s) {
@@ -114,14 +112,14 @@ std::vector<SearchResult> SearchEngine::SearchBytes(IBlockDevice& device,
                 res.context_snippet = snip;
                 results.push_back(res);
 
-                if (results.size() >= 1000) break; // Bounded result limit
+                if (results.size() >= 1000) break;
             }
         }
 
         processed += std::min<uint64_t>(CHUNK_SIZE, search_len - processed);
 
         if (progress_fn) {
-            if (!progress_fn(processed, search_len)) break; // Cancelled
+            if (!progress_fn(processed, search_len)) break;
         }
     }
 
@@ -264,23 +262,9 @@ ChecksumResult BinaryAnalyzer::CalculateChecksums(IBlockDevice& device, uint64_t
     // CRC32
     res.crc32 = static_cast<uint32_t>(crc32(0L, buffer.data(), static_cast<uInt>(read_bytes)));
 
-    // MD5
-    unsigned char md5_digest[MD5_DIGEST_LENGTH];
-    MD5(buffer.data(), read_bytes, md5_digest);
-    std::ostringstream md5_ss;
-    for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
-        md5_ss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(md5_digest[i]);
-    }
-    res.md5_hex = md5_ss.str();
-
-    // SHA256
-    unsigned char sha_digest[SHA256_DIGEST_LENGTH];
-    SHA256(buffer.data(), read_bytes, sha_digest);
-    std::ostringstream sha_ss;
-    for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
-        sha_ss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(sha_digest[i]);
-    }
-    res.sha256_hex = sha_ss.str();
+    // Standalone SHA256 & MD5 (portable without external libcrypto dependency)
+    res.sha256_hex = Sha256::HexHash(buffer.data(), read_bytes);
+    res.md5_hex = Md5::HexHash(buffer.data(), read_bytes);
 
     return res;
 }

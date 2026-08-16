@@ -1,6 +1,7 @@
 #include "filesystem.hpp"
 #include "fat_filesystem.hpp"
 #include "iso9660_filesystem.hpp"
+#include "exfat_ntfs_filesystem.hpp"
 
 namespace disk_analyzer {
 
@@ -11,6 +12,12 @@ std::shared_ptr<IFileSystem> FileSystemFactory::ProbeAndOpen(std::shared_ptr<IBl
 
     auto fat = FatFileSystem::Open(device);
     if (fat) return fat;
+
+    auto exfat = ExFatFileSystem::Open(device);
+    if (exfat) return exfat;
+
+    auto ntfs = NtfsFileSystem::Open(device);
+    if (ntfs) return ntfs;
 
     auto iso = Iso9660FileSystem::Open(device);
     if (iso) return iso;
