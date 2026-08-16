@@ -23,7 +23,6 @@ struct Qcow2Header {
     uint32_t refcount_table_clusters;
     uint32_t nb_snapshots;
     uint64_t snapshots_offset;
-    // Version 3 extra fields
     uint64_t incompatible_features;
     uint64_t compatible_features;
     uint64_t autoclear_features;
@@ -58,7 +57,6 @@ private:
 
     std::vector<uint64_t> l1_table_;
 
-    // Bounded L2 table cache to prevent unlimited RAM usage
     mutable std::mutex cache_mutex_;
     static constexpr size_t MAX_L2_CACHE_ENTRIES = 128;
     mutable std::unordered_map<uint64_t, std::vector<uint64_t>> l2_cache_;

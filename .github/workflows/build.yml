@@ -35,8 +35,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+      - name: Select Xcode 16 for iOS 18 SDK
+        run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer || true
 
       - name: Configure C++ Core for iOS Static Library
         run: |
@@ -57,7 +57,6 @@ jobs:
         run: |
           mkdir -p build_app/Payload/DiskAnalyzer.app
 
-          # Compile Swift & SwiftUI components for iOS 18 physical device (arm64)
           xcrun -sdk iphoneos swiftc \
             -target arm64-apple-ios18.0 \
             -import-objc-header include/disk_analyzer.h \

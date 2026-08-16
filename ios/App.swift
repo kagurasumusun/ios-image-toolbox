@@ -1,17 +1,77 @@
 import SwiftUI
+import UniformTypeIdentifiers
+
+struct AppContentView: View {
+    @StateObject private var engine = DiskAnalyzerEngine()
+    @State private var isPickerPresented: Bool = false
+
+    var body: some View {
+        TabView {
+            OverviewView(engine: engine)
+                .tabItem {
+                    Label("Overview", systemName: "info.circle")
+                }
+
+            PartitionView(engine: engine)
+                .tabItem {
+                    Label("Partitions", systemName: "square.split.2x2")
+                }
+
+            FileBrowserView(engine: engine)
+                .tabItem {
+                    Label("Files", systemName: "folder")
+                }
+
+            CarvingView(engine: engine)
+                .tabItem {
+                    Label("Carving", systemName: "wand.and.stars")
+                }
+
+            HexView(engine: engine)
+                .tabItem {
+                    Label("Hex", systemName: "viewfinder")
+                }
+
+            SearchView(engine: engine)
+                .tabItem {
+                    Label("Search", systemName: "magnifyingglass")
+                }
+
+            BinaryAnalysisView(engine: engine)
+                .tabItem {
+                    Label("Diagnostics", systemName: "cpu")
+                }
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Open Image") {
+                    isPickerPresented = true
+                }
+            }
+        }
+        .fileImporter(
+            isPresented: $isPickerPresented,
+            allowedContentTypes: [.data, .diskImage, .item],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    _ = engine.openImage(url: url)
+                }
+            case .failure(let err):
+                print("Picker error: \(err.localizedDescription)")
+            }
+        }
+    }
+}
 
 @main
 struct DiskAnalyzerApp: App {
-    @StateObject private var engine = DiskAnalyzerEngine()
-
     var body: some Scene {
         WindowGroup {
             NavigationView {
-                VStack {
-                    OverviewView(engine: engine)
-                    FileBrowserView(engine: engine)
-                }
-                .navigationTitle("Disk Analyzer")
+                AppContentView()
             }
         }
     }

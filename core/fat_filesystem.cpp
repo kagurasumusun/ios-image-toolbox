@@ -1,6 +1,7 @@
 #include "fat_filesystem.hpp"
 #include <cstring>
 #include <algorithm>
+#include <sstream>
 
 namespace disk_analyzer {
 
@@ -125,17 +126,67 @@ uint32_t FatFileSystem::GetNextCluster(uint32_t cluster) {
 bool FatFileSystem::ReadDirectory(const std::string& path, std::vector<FileEntry>& out_entries) {
     if (!is_valid_) return false;
 
-    // Read Root directory entries
-    uint64_t dir_offset = root_dir_start_sector_ * bpb_.bytes_per_sector;
-    uint32_t dir_size = bpb_.root_entry_count * 32;
-
-    if (dir_size == 0 && variant_ == FatVariant::Fat32) {
-        dir_offset = ClusterToSector(bpb_.root_cluster) * bpb_.bytes_per_sector;
-        dir_size = bytes_per_cluster_;
+    // Traverse directory tree to find directory entries for requested path
+    std::vector<std::string> components;
+    std::stringstream ss(path);
+    std::string comp;
+    while (std::getline(ss, comp, '/')) {
+        if (!comp.empty() && comp != ".") {
+            components.push_back(comp);
+        }
     }
 
-    std::vector<uint8_t> dir_buf(dir_size);
-    if (device_->ReadAt(dir_offset, dir_buf.data(), dir_size) < dir_size) {
+    uint64_t current_offset = root_dir_start_sector_ * bpb_.bytes_per_sector;
+    uint32_t current_size = bpb_.root_entry_count * 32;
+    uint32_t current_cluster = (variant_ == FatVariant::Fat32) ? bpb_.root_cluster : 0;
+
+    if (current_size == 0 && variant_ == FatVariant::Fat32) {
+        current_offset = ClusterToSector(current_cluster) * bpb_.bytes_per_sector;
+        current_size = bytes_per_cluster_;
+    }
+
+    for (size_t c = 0; c < components.size(); ++c) {
+        std::vector<FileEntry> entries;
+        std::vector<uint8_t> dir_buf(current_size);
+        if (device_->ReadAt(current_offset, dir_buf.data(), current_size) < current_size) {
+            return false;
+        }
+
+        bool found_subdir = false;
+        for (size_t i = 0; i < dir_buf.size(); i += 32) {
+            const uint8_t* entry = dir_buf.data() + i;
+            if (entry[0] == 0x00) break;
+            if (entry[0] == 0xE5 || entry[11] == 0x0F) continue;
+
+            char name_buf[12]{};
+            std::memcpy(name_buf, entry, 11);
+            std::string filename;
+            for (int k = 0; k < 8; ++k) {
+                if (name_buf[k] != ' ') filename += name_buf[k];
+            }
+            if (name_buf[8] != ' ') {
+                filename += ".";
+                for (int k = 8; k < 11; ++k) {
+                    if (name_buf[k] != ' ') filename += name_buf[k];
+                }
+            }
+
+            if (filename == components[c] && (entry[11] & 0x10)) {
+                uint16_t cluster_high = *reinterpret_cast<const uint16_t*>(entry + 20);
+                uint16_t cluster_low = *reinterpret_cast<const uint16_t*>(entry + 26);
+                current_cluster = (static_cast<uint32_t>(cluster_high) << 16) | cluster_low;
+                current_offset = ClusterToSector(current_cluster) * bpb_.bytes_per_sector;
+                current_size = bytes_per_cluster_;
+                found_subdir = true;
+                break;
+            }
+        }
+        if (!found_subdir) return false;
+    }
+
+    // Read target directory
+    std::vector<uint8_t> dir_buf(current_size);
+    if (device_->ReadAt(current_offset, dir_buf.data(), current_size) < current_size) {
         return false;
     }
 
@@ -143,21 +194,23 @@ bool FatFileSystem::ReadDirectory(const std::string& path, std::vector<FileEntry
         const uint8_t* entry = dir_buf.data() + i;
         if (entry[0] == 0x00) break; // No more entries
         if (entry[0] == 0xE5) continue; // Deleted entry
-        if (entry[11] == 0x0F) continue; // LFN entry (simplified)
+        if (entry[11] == 0x0F) continue; // LFN entry
 
         char name_buf[12]{};
         std::memcpy(name_buf, entry, 11);
 
         std::string filename;
-        for (int c = 0; c < 8; ++c) {
-            if (name_buf[c] != ' ') filename += name_buf[c];
+        for (int k = 0; k < 8; ++k) {
+            if (name_buf[k] != ' ') filename += name_buf[k];
         }
         if (name_buf[8] != ' ') {
             filename += ".";
-            for (int c = 8; c < 11; ++c) {
-                if (name_buf[c] != ' ') filename += name_buf[c];
+            for (int k = 8; k < 11; ++k) {
+                if (name_buf[k] != ' ') filename += name_buf[k];
             }
         }
+
+        if (filename == "." || filename == "..") continue;
 
         uint8_t attr = entry[11];
         uint16_t cluster_high = *reinterpret_cast<const uint16_t*>(entry + 20);
@@ -212,11 +265,10 @@ size_t FatFileSystem::ReadFile(const FileEntry& entry, uint64_t offset, void* bu
         bytes_read += chunk;
         cluster_offset = 0;
 
-        // Single cluster file or end of chain check
         if (bytes_read >= to_read) break;
 
         current_cluster = GetNextCluster(current_cluster);
-        if (++steps > total_clusters_ + 10) break; // Cycle detection
+        if (++steps > total_clusters_ + 10) break;
     }
 
     return bytes_read;

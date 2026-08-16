@@ -39,7 +39,15 @@ typedef struct CFileEntry {
     char path[1024];
     bool is_directory;
     uint64_t size_bytes;
+    uint64_t cluster_or_inode;
 } CFileEntry;
+
+typedef struct CHexRow {
+    uint64_t offset;
+    uint8_t bytes[16];
+    size_t byte_count;
+    char ascii_dump[17];
+} CHexRow;
 
 typedef struct CSearchResult {
     uint64_t offset;
@@ -53,14 +61,31 @@ typedef struct CChecksumResult {
     char sha256_hex[65];
 } CChecksumResult;
 
+typedef struct CCarvedFile {
+    uint64_t offset;
+    uint64_t size_bytes;
+    char file_type[32];
+    char extension[8];
+} CCarvedFile;
+
+typedef struct CDiffBlock {
+    uint64_t offset;
+    size_t length;
+    bool is_different;
+} CDiffBlock;
+
 // API functions
 const char* disk_analyzer_version(void);
 
 DiskDeviceHandle* disk_analyzer_open_raw(const char* filepath);
 DiskDeviceHandle* disk_analyzer_open_qcow2(const char* filepath);
+DiskDeviceHandle* disk_analyzer_open_vhd(const char* filepath);
+DiskDeviceHandle* disk_analyzer_open_vmdk(const char* filepath);
+DiskDeviceHandle* disk_analyzer_open_vdi(const char* filepath);
 void disk_analyzer_close_device(DiskDeviceHandle* handle);
 
 uint64_t disk_analyzer_device_get_size(DiskDeviceHandle* handle);
+uint32_t disk_analyzer_device_get_block_size(DiskDeviceHandle* handle);
 size_t disk_analyzer_device_read_at(DiskDeviceHandle* handle, uint64_t offset, void* buffer, size_t size);
 
 size_t disk_analyzer_get_partitions(DiskDeviceHandle* handle, CPartitionInfo* out_partitions, size_t max_count);
@@ -73,9 +98,14 @@ size_t disk_analyzer_fs_list_directory(DiskFsHandle* fs_handle, const char* path
 
 bool disk_analyzer_fs_extract_file(DiskFsHandle* fs_handle, const char* file_path, const char* dest_path);
 
+size_t disk_analyzer_get_hex_view(DiskDeviceHandle* handle, uint64_t offset, size_t size, CHexRow* out_rows, size_t max_rows);
 size_t disk_analyzer_search_text(DiskDeviceHandle* handle, const char* query, bool case_sensitive, CSearchResult* out_results, size_t max_results);
 double disk_analyzer_calculate_entropy(DiskDeviceHandle* handle, uint64_t offset, size_t size);
 bool disk_analyzer_calculate_checksums(DiskDeviceHandle* handle, uint64_t offset, size_t size, CChecksumResult* out_checksums);
+const char* disk_analyzer_detect_magic(DiskDeviceHandle* handle, uint64_t offset);
+
+size_t disk_analyzer_carve_files(DiskDeviceHandle* handle, uint64_t offset, uint64_t length, CCarvedFile* out_carved, size_t max_count);
+size_t disk_analyzer_diff_devices(DiskDeviceHandle* handle1, DiskDeviceHandle* handle2, uint64_t offset, uint64_t length, CDiffBlock* out_diffs, size_t max_count);
 
 #ifdef __cplusplus
 }

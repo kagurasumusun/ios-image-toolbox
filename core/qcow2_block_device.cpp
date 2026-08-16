@@ -5,19 +5,19 @@
 
 namespace disk_analyzer {
 
-static uint16_t Swap16(uint16_t v) { return (v >> 8) | (v << 8); }
 static uint32_t Swap32(uint32_t v) {
     return ((v >> 24) & 0xff) | ((v >> 8) & 0xff00) | ((v << 8) & 0xff0000) | ((v << 24) & 0xff000000);
 }
+
 static uint64_t Swap64(uint64_t v) {
     return ((v & 0x00000000000000ffULL) << 56) |
            ((v & 0x000000000000ff00ULL) << 40) |
            ((v & 0x0000000000ff0000ULL) << 24) |
            ((v & 0x00000000ff000000ULL) << 8)  |
-           ((v & 0x0000000100000000ULL) >> 8)  |
-           ((v & 0x0000001000000000ULL) >> 24) |
-           ((v & 0x0000100000000000ULL) >> 40) |
-           ((v & 0x1000000000000000ULL) >> 56);
+           ((v & 0x000000ff00000000ULL) >> 8)  |
+           ((v & 0x0000ff0000000000ULL) >> 24) |
+           ((v & 0x00ff000000000000ULL) >> 40) |
+           ((v & 0xff00000000000000ULL) >> 56);
 }
 
 static uint32_t Be32(uint32_t v) { return Swap32(v); }
@@ -103,7 +103,6 @@ bool Qcow2BlockDevice::ParseHeader() {
     std::memcpy(&header_.snapshots_offset, buf + 64, 8);
     header_.snapshots_offset = Be64(header_.snapshots_offset);
 
-    // Sanity check L1 size to avoid huge allocations from corrupt headers
     if (header_.l1_size > 1024 * 1024) {
         return false;
     }
@@ -140,7 +139,7 @@ const std::vector<uint64_t>& Qcow2BlockDevice::GetL2Table(uint64_t l1_index) {
     }
 
     uint64_t l1_entry = l1_table_[l1_index];
-    uint64_t l2_offset = l1_entry & ~0x3fe00000000001ffULL; // mask flags
+    uint64_t l2_offset = l1_entry & ~0x3fe00000000001ffULL;
     if (l2_offset == 0) {
         return empty_l2;
     }
@@ -179,12 +178,11 @@ bool Qcow2BlockDevice::ReadCluster(uint64_t cluster_index, std::vector<uint8_t>&
 
     const auto& l2_table = GetL2Table(l1_index);
     if (l2_index >= l2_table.size()) {
-        return true; // unallocated cluster (returns zeroes)
+        return true;
     }
 
     uint64_t l2_entry = l2_table[l2_index];
 
-    // Compressed cluster check
     if (l2_entry & (1ULL << 62)) {
         uint64_t csize_shift = 62 - (header_.cluster_bits - 8);
         uint64_t compressed_sector_offset = l2_entry & ((1ULL << csize_shift) - 1);
@@ -202,7 +200,7 @@ bool Qcow2BlockDevice::ReadCluster(uint64_t cluster_index, std::vector<uint8_t>&
         strm.next_out = out_cluster.data();
         strm.avail_out = static_cast<uInt>(cluster_size_);
 
-        if (inflateInit2(&strm, -12) != Z_OK) { // raw deflate stream
+        if (inflateInit2(&strm, -12) != Z_OK) {
             return false;
         }
         int ret = inflate(&strm, Z_FINISH);
@@ -213,7 +211,7 @@ bool Qcow2BlockDevice::ReadCluster(uint64_t cluster_index, std::vector<uint8_t>&
 
     uint64_t cluster_offset = l2_entry & ~0xc0000000000001ffULL;
     if (cluster_offset == 0) {
-        return true; // unallocated cluster (zeroes)
+        return true;
     }
 
     return base_dev_->ReadAt(cluster_offset, out_cluster.data(), cluster_size_) == cluster_size_;

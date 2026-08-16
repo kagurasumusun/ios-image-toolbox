@@ -1,6 +1,6 @@
 import Foundation
 
-public struct PartitionModel: Identifiable {
+public struct PartitionModel: Identifiable, Hashable {
     public let id: UInt32
     public let index: UInt32
     public let startSector: UInt64
@@ -11,12 +11,19 @@ public struct PartitionModel: Identifiable {
     public let bootable: Bool
 }
 
-public struct FileEntryModel: Identifiable {
+public struct FileEntryModel: Identifiable, Hashable {
     public var id: String { path }
     public let name: String
     public let path: String
     public let isDirectory: Bool
     public let sizeBytes: UInt64
+}
+
+public struct HexRowModel: Identifiable {
+    public var id: UInt64 { offset }
+    public let offset: UInt64
+    public let hexDump: String
+    public let asciiDump: String
 }
 
 public struct SearchResultModel: Identifiable {
@@ -26,15 +33,37 @@ public struct SearchResultModel: Identifiable {
     public let snippet: String
 }
 
+public struct CarvedFileModel: Identifiable {
+    public var id: UInt64 { offset }
+    public let offset: UInt64
+    public let sizeBytes: UInt64
+    public let fileType: String
+    public let extensionName: String
+}
+
+public struct ChecksumModel {
+    public let crc32: UInt32
+    public let md5: String
+    public let sha256: String
+}
+
 public class DiskAnalyzerEngine: ObservableObject {
     private var deviceHandle: OpaquePointer?
     private var fsHandle: OpaquePointer?
 
     @Published public var isLoaded: Bool = false
+    @Published public var imagePath: String = ""
     @Published public var totalSize: UInt64 = 0
+    @Published public var blockSize: UInt32 = 512
+    @Published public var detectedMagic: String = "Unknown"
     @Published public var partitions: [PartitionModel] = []
+    @Published public var mountedFsName: String = "None"
     @Published public var currentPathFiles: [FileEntryModel] = []
+    @Published public var hexRows: [HexRowModel] = []
     @Published public var searchResults: [SearchResultModel] = []
+    @Published public var carvedFiles: [CarvedFileModel] = []
+    @Published public var lastChecksums: ChecksumModel?
+    @Published public var currentEntropy: Double = 0.0
 
     public init() {}
 
@@ -42,23 +71,45 @@ public class DiskAnalyzerEngine: ObservableObject {
         close()
     }
 
-    public func openRawImage(path: String) -> Bool {
+    public func openImage(url: URL) -> Bool {
         close()
-        guard let handle = disk_analyzer_open_raw(path) else { return false }
-        self.deviceHandle = handle
-        self.totalSize = disk_analyzer_device_get_size(handle)
-        self.isLoaded = true
-        loadPartitions()
-        return true
+        guard url.startAccessingSecurityScopedResource() else {
+            return openImageByPath(path: url.path)
+        }
+        defer { url.stopAccessingSecurityScopedResource() }
+        return openImageByPath(path: url.path)
     }
 
-    public func openQcow2Image(path: String) -> Bool {
+    public func openImageByPath(path: String) -> Bool {
         close()
-        guard let handle = disk_analyzer_open_qcow2(path) else { return false }
-        self.deviceHandle = handle
+        self.imagePath = path
+
+        if let handle = disk_analyzer_open_vhd(path) {
+            self.deviceHandle = handle
+        } else if let handle = disk_analyzer_open_vmdk(path) {
+            self.deviceHandle = handle
+        } else if let handle = disk_analyzer_open_vdi(path) {
+            self.deviceHandle = handle
+        } else if let handle = disk_analyzer_open_qcow2(path) {
+            self.deviceHandle = handle
+        } else if let handle = disk_analyzer_open_raw(path) {
+            self.deviceHandle = handle
+        } else {
+            return false
+        }
+
+        guard let handle = deviceHandle else { return false }
+
         self.totalSize = disk_analyzer_device_get_size(handle)
+        self.blockSize = disk_analyzer_device_get_block_size(handle)
+        if let magicPtr = disk_analyzer_detect_magic(handle, 0) {
+            self.detectedMagic = String(cString: magicPtr)
+        }
         self.isLoaded = true
+
         loadPartitions()
+        loadHexView(offset: 0, size: 512)
+        calculateEntropy(offset: 0, size: min(totalSize, 1024 * 1024))
         return true
     }
 
@@ -72,14 +123,23 @@ public class DiskAnalyzerEngine: ObservableObject {
             deviceHandle = nil
         }
         isLoaded = false
+        imagePath = ""
+        totalSize = 0
+        blockSize = 512
+        detectedMagic = "Unknown"
         partitions.removeAll()
         currentPathFiles.removeAll()
+        hexRows.removeAll()
+        searchResults.removeAll()
+        carvedFiles.removeAll()
+        lastChecksums = nil
+        mountedFsName = "None"
     }
 
     public func loadPartitions() {
         guard let dev = deviceHandle else { return }
-        var cPartitions = [CPartitionInfo](repeating: CPartitionInfo(), count: 16)
-        let count = disk_analyzer_get_partitions(dev, &cPartitions, 16)
+        var cPartitions = [CPartitionInfo](repeating: CPartitionInfo(), count: 32)
+        let count = disk_analyzer_get_partitions(dev, &cPartitions, 32)
 
         partitions = (0..<count).map { i in
             let p = cPartitions[i]
@@ -106,6 +166,9 @@ public class DiskAnalyzerEngine: ObservableObject {
         }
         guard let fs = disk_analyzer_open_filesystem(dev, partitionOffset, partitionSize) else { return false }
         self.fsHandle = fs
+        if let namePtr = disk_analyzer_fs_get_name(fs) {
+            self.mountedFsName = String(cString: namePtr)
+        }
         return true
     }
 
@@ -127,6 +190,31 @@ public class DiskAnalyzerEngine: ObservableObject {
         }
     }
 
+    public func extractFile(filePath: String, destPath: String) -> Bool {
+        guard let fs = fsHandle else { return false }
+        return disk_analyzer_fs_extract_file(fs, filePath, destPath)
+    }
+
+    public func loadHexView(offset: UInt64, size: Int = 512) {
+        guard let dev = deviceHandle else { return }
+        var cRows = [CHexRow](repeating: CHexRow(), count: 32)
+        let count = disk_analyzer_get_hex_view(dev, offset, size, &cRows, 32)
+
+        hexRows = (0..<count).map { i in
+            let r = cRows[i]
+            let ascii = withUnsafeBytes(of: r.ascii_dump) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+
+            var hexDumpStr = ""
+            withUnsafeBytes(of: r.bytes) { ptr in
+                for b in 0..<r.byte_count {
+                    hexDumpStr += String(format: "%02X ", ptr[b])
+                }
+            }
+
+            return HexRowModel(offset: r.offset, hexDump: hexDumpStr, asciiDump: ascii)
+        }
+    }
+
     public func search(query: String, caseSensitive: Bool) {
         guard let dev = deviceHandle else { return }
         var cResults = [CSearchResult](repeating: CSearchResult(), count: 100)
@@ -136,6 +224,34 @@ public class DiskAnalyzerEngine: ObservableObject {
             let r = cResults[i]
             let snip = withUnsafeBytes(of: r.snippet) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
             return SearchResultModel(offset: r.offset, length: r.match_length, snippet: snip)
+        }
+    }
+
+    public func carveFiles(offset: UInt64, length: UInt64) {
+        guard let dev = deviceHandle else { return }
+        var cCarved = [CCarvedFile](repeating: CCarvedFile(), count: 100)
+        let count = disk_analyzer_carve_files(dev, offset, length, &cCarved, 100)
+
+        carvedFiles = (0..<count).map { i in
+            let c = cCarved[i]
+            let fileType = withUnsafeBytes(of: c.file_type) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            let ext = withUnsafeBytes(of: c.extension) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            return CarvedFileModel(offset: c.offset, sizeBytes: c.size_bytes, fileType: fileType, extensionName: ext)
+        }
+    }
+
+    public func calculateEntropy(offset: UInt64, size: UInt64) {
+        guard let dev = deviceHandle else { return }
+        self.currentEntropy = disk_analyzer_calculate_entropy(dev, offset, Int(size))
+    }
+
+    public func calculateChecksums(offset: UInt64, size: UInt64) {
+        guard let dev = deviceHandle else { return }
+        var cChecksums = CChecksumResult()
+        if disk_analyzer_calculate_checksums(dev, offset, Int(size), &cChecksums) {
+            let md5Str = withUnsafeBytes(of: cChecksums.md5_hex) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            let shaStr = withUnsafeBytes(of: cChecksums.sha256_hex) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            self.lastChecksums = ChecksumModel(crc32: cChecksums.crc32, md5: md5Str, sha256: shaStr)
         }
     }
 }
