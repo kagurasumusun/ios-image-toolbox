@@ -7,6 +7,8 @@ add_executable(disk_analyzer_tests
     test_filesystem.cpp
     test_qcow2.cpp
     test_analysis.cpp
+    test_signatures.cpp
+    test_report.cpp
 )
 
 target_link_libraries(disk_analyzer_tests PRIVATE disk_analyzer_core)

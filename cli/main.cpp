@@ -9,6 +9,8 @@
 #include "partition.hpp"
 #include "filesystem.hpp"
 #include "analysis.hpp"
+#include "signature_scanner.hpp"
+#include "report.hpp"
 
 using namespace disk_analyzer;
 
@@ -20,7 +22,9 @@ void PrintUsage() {
               << "  search <image> <text>     Search text pattern in image\n"
               << "  hex <image> <offset>      Show hex dump at offset\n"
               << "  checksum <image>          Calculate CRC32, MD5, SHA256\n"
-              << "  regions <image>           Classify image regions by entropy/content\n";
+              << "  regions <image>           Classify image regions by entropy/content\n"
+              << "  signatures <image>        Scan embedded file, firmware, archive signatures\n"
+              << "  report <image>            Emit consolidated JSON analysis report\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -48,6 +52,16 @@ int main(int argc, char* argv[]) {
         std::cout << "File: " << image_path << std::endl;
         std::cout << "Size: " << dev->GetSize() << " bytes (" << (dev->GetSize() / (1024 * 1024)) << " MB)" << std::endl;
         std::cout << "Block Size: " << dev->GetBlockSize() << " bytes" << std::endl;
+
+        auto fs_candidates = FileSystemFactory::ScanFilesystems(dev);
+        std::cout << "\n=== Filesystems Detected (" << fs_candidates.size() << ") ===" << std::endl;
+        for (const auto& fs : fs_candidates) {
+            std::cout << " " << fs.fs_type
+                      << " | Offset: 0x" << std::hex << fs.offset << std::dec
+                      << " | Size: " << (fs.size_bytes / (1024 * 1024)) << " MB"
+                      << " | Source: " << fs.source
+                      << " | Confidence: " << fs.confidence << "%" << std::endl;
+        }
 
         auto parts = PartitionTableParser::Parse(dev);
         std::cout << "\n=== Partitions Detected (" << parts.size() << ") ===" << std::endl;
@@ -83,6 +97,19 @@ int main(int argc, char* argv[]) {
         for (const auto& r : results) {
             std::cout << " Offset 0x" << std::hex << r.offset << std::dec
                       << ": " << r.context_snippet << std::endl;
+        }
+    } else if (cmd == "report") {
+        std::cout << AnalysisReportBuilder::BuildJson(dev, image_path);
+    } else if (cmd == "signatures") {
+        std::cout << "=== Signature Scan ===" << std::endl;
+        auto hits = SignatureScanner::Scan(*dev, 0, std::min<uint64_t>(dev->GetSize(), 256 * 1024 * 1024), 256);
+        std::cout << "Found " << hits.size() << " signature hit(s):" << std::endl;
+        for (const auto& hit : hits) {
+            std::cout << " Offset 0x" << std::hex << hit.offset << std::dec
+                      << " | " << hit.format
+                      << " | " << hit.category
+                      << " | confidence=" << hit.confidence << "%"
+                      << " | " << hit.description << std::endl;
         }
     } else if (cmd == "checksum") {
         std::cout << "=== Calculating Checksums ===" << std::endl;

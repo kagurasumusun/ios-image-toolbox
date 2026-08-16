@@ -8,12 +8,15 @@
 #include "analysis.hpp"
 #include "carving.hpp"
 #include "diff_engine.hpp"
+#include "signature_scanner.hpp"
+#include "report.hpp"
 
 #include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <memory>
 #include <vector>
+#include <cstdlib>
 
 using namespace disk_analyzer;
 
@@ -150,6 +153,25 @@ size_t disk_analyzer_get_partitions(DiskDeviceHandle* handle, CPartitionInfo* ou
         dst.type_guid[sizeof(dst.type_guid) - 1] = '\0';
     }
 
+    return count;
+}
+
+size_t disk_analyzer_scan_filesystems(DiskDeviceHandle* handle, CFilesystemCandidate* out_candidates, size_t max_count) {
+    if (!handle || !handle->dev || !out_candidates || max_count == 0) return 0;
+
+    auto candidates = FileSystemFactory::ScanFilesystems(handle->dev);
+    size_t count = std::min(max_count, candidates.size());
+    for (size_t i = 0; i < count; ++i) {
+        const auto& src = candidates[i];
+        CFilesystemCandidate& dst = out_candidates[i];
+        dst.offset = src.offset;
+        dst.size_bytes = src.size_bytes;
+        dst.confidence = src.confidence;
+        std::strncpy(dst.fs_type, src.fs_type.c_str(), sizeof(dst.fs_type) - 1);
+        dst.fs_type[sizeof(dst.fs_type) - 1] = '\0';
+        std::strncpy(dst.source, src.source.c_str(), sizeof(dst.source) - 1);
+        dst.source[sizeof(dst.source) - 1] = '\0';
+    }
     return count;
 }
 
@@ -361,6 +383,45 @@ size_t disk_analyzer_carve_files(DiskDeviceHandle* handle, uint64_t offset, uint
     }
 
     return count;
+}
+
+size_t disk_analyzer_scan_signatures(DiskDeviceHandle* handle, uint64_t offset, uint64_t length, CSignatureHit* out_hits, size_t max_count) {
+    if (!handle || !handle->dev || !out_hits || max_count == 0) return 0;
+
+    auto hits = SignatureScanner::Scan(*handle->dev, offset, length, max_count);
+    size_t count = std::min(max_count, hits.size());
+    for (size_t i = 0; i < count; ++i) {
+        const auto& src = hits[i];
+        CSignatureHit& dst = out_hits[i];
+        dst.offset = src.offset;
+        dst.confidence = src.confidence;
+        std::strncpy(dst.format, src.format.c_str(), sizeof(dst.format) - 1);
+        dst.format[sizeof(dst.format) - 1] = '\0';
+        std::strncpy(dst.category, src.category.c_str(), sizeof(dst.category) - 1);
+        dst.category[sizeof(dst.category) - 1] = '\0';
+        std::strncpy(dst.description, src.description.c_str(), sizeof(dst.description) - 1);
+        dst.description[sizeof(dst.description) - 1] = '\0';
+        std::strncpy(dst.extension, src.extension.c_str(), sizeof(dst.extension) - 1);
+        dst.extension[sizeof(dst.extension) - 1] = '\0';
+    }
+    return count;
+}
+
+char* disk_analyzer_generate_json_report(DiskDeviceHandle* handle, const char* image_name) {
+    if (!handle || !handle->dev) return nullptr;
+    try {
+        auto report = AnalysisReportBuilder::BuildJson(handle->dev, image_name ? image_name : "");
+        char* out = static_cast<char*>(std::malloc(report.size() + 1));
+        if (!out) return nullptr;
+        std::memcpy(out, report.c_str(), report.size() + 1);
+        return out;
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void disk_analyzer_free_string(char* value) {
+    std::free(value);
 }
 
 size_t disk_analyzer_diff_devices(DiskDeviceHandle* handle1, DiskDeviceHandle* handle2, uint64_t offset, uint64_t length, CDiffBlock* out_diffs, size_t max_count) {

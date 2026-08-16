@@ -33,12 +33,31 @@ public struct SearchResultModel: Identifiable {
     public let snippet: String
 }
 
+public struct SignatureHitModel: Identifiable, Hashable {
+    public var id: String { "\(offset)-\(format)-\(description)" }
+    public let offset: UInt64
+    public let format: String
+    public let category: String
+    public let description: String
+    public let extensionName: String
+    public let confidence: UInt32
+}
+
 public struct CarvedFileModel: Identifiable {
     public var id: UInt64 { offset }
     public let offset: UInt64
     public let sizeBytes: UInt64
     public let fileType: String
     public let extensionName: String
+}
+
+public struct FilesystemCandidateModel: Identifiable, Hashable {
+    public var id: String { "\(offset)-\(fsType)-\(source)" }
+    public let offset: UInt64
+    public let sizeBytes: UInt64
+    public let fsType: String
+    public let source: String
+    public let confidence: UInt32
 }
 
 public struct ChecksumModel {
@@ -69,14 +88,17 @@ public class DiskAnalyzerEngine: ObservableObject {
     @Published public var detectedMagic: String = "Unknown"
     @Published public var partitions: [PartitionModel] = []
     @Published public var mountedFsName: String = "None"
+    @Published public var filesystemCandidates: [FilesystemCandidateModel] = []
     @Published public var currentPathFiles: [FileEntryModel] = []
     @Published public var hexRows: [HexRowModel] = []
     @Published public var searchResults: [SearchResultModel] = []
+    @Published public var signatureHits: [SignatureHitModel] = []
     @Published public var carvedFiles: [CarvedFileModel] = []
     @Published public var lastChecksums: ChecksumModel?
     @Published public var currentEntropy: Double = 0.0
     @Published public var regionSummaries: [RegionSummaryModel] = []
     @Published public var statusMessage: String = "Open an image to begin analysis."
+    @Published public var jsonReport: String = ""
 
     public init() {}
 
@@ -113,9 +135,12 @@ public class DiskAnalyzerEngine: ObservableObject {
         self.isLoaded = true
 
         loadPartitions()
+        scanFilesystems()
         loadHexView(offset: 0, size: 512)
         calculateEntropy(offset: 0, size: min(totalSize, 1024 * 1024))
         classifyRegions(offset: 0, length: min(totalSize, 64 * 1024 * 1024), regionSize: 1024 * 1024)
+        scanSignatures(offset: 0, length: min(totalSize, 256 * 1024 * 1024))
+        jsonReport = ""
         statusMessage = "Loaded and profiled \(URL(fileURLWithPath: path).lastPathComponent)"
         return true
     }
@@ -136,12 +161,15 @@ public class DiskAnalyzerEngine: ObservableObject {
         detectedMagic = "Unknown"
         partitions.removeAll()
         currentPathFiles.removeAll()
+        filesystemCandidates.removeAll()
         hexRows.removeAll()
         searchResults.removeAll()
+        signatureHits.removeAll()
         carvedFiles.removeAll()
         lastChecksums = nil
         mountedFsName = "None"
         regionSummaries.removeAll()
+        jsonReport = ""
         statusMessage = "Open an image to begin analysis."
     }
 
@@ -164,6 +192,19 @@ public class DiskAnalyzerEngine: ObservableObject {
                 typeGuid: guid,
                 bootable: p.bootable
             )
+        }
+    }
+
+    public func scanFilesystems() {
+        guard let dev = deviceHandle else { return }
+        var cCandidates = [CFilesystemCandidate](repeating: CFilesystemCandidate(), count: 64)
+        let count = disk_analyzer_scan_filesystems(dev, &cCandidates, 64)
+
+        filesystemCandidates = (0..<count).map { i in
+            let c = cCandidates[i]
+            let fsType = withUnsafeBytes(of: c.fs_type) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            let source = withUnsafeBytes(of: c.source) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            return FilesystemCandidateModel(offset: c.offset, sizeBytes: c.size_bytes, fsType: fsType, source: source, confidence: c.confidence)
         }
     }
 
@@ -240,6 +281,21 @@ public class DiskAnalyzerEngine: ObservableObject {
         }
     }
 
+    public func scanSignatures(offset: UInt64, length: UInt64) {
+        guard let dev = deviceHandle else { return }
+        var cHits = [CSignatureHit](repeating: CSignatureHit(), count: 256)
+        let count = disk_analyzer_scan_signatures(dev, offset, length, &cHits, 256)
+
+        signatureHits = (0..<count).map { i in
+            let h = cHits[i]
+            let format = withUnsafeBytes(of: h.format) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            let category = withUnsafeBytes(of: h.category) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            let description = withUnsafeBytes(of: h.description) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            let ext = withUnsafeBytes(of: h.extension) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            return SignatureHitModel(offset: h.offset, format: format, category: category, description: description, extensionName: ext, confidence: h.confidence)
+        }
+    }
+
     public func carveFiles(offset: UInt64, length: UInt64) {
         guard let dev = deviceHandle else { return }
         var cCarved = [CCarvedFile](repeating: CCarvedFile(), count: 100)
@@ -276,6 +332,18 @@ public class DiskAnalyzerEngine: ObservableObject {
                 kind: kind
             )
         }
+    }
+
+    public func generateJsonReport() -> Bool {
+        guard let dev = deviceHandle else { return false }
+        guard let reportPtr = disk_analyzer_generate_json_report(dev, URL(fileURLWithPath: imagePath).lastPathComponent) else {
+            statusMessage = "Failed to generate analysis report."
+            return false
+        }
+        defer { disk_analyzer_free_string(reportPtr) }
+        jsonReport = String(cString: reportPtr)
+        statusMessage = "Generated JSON analysis report."
+        return true
     }
 
     public func calculateChecksums(offset: UInt64, size: UInt64) {
