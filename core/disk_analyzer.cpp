@@ -153,6 +153,25 @@ size_t disk_analyzer_get_partitions(DiskDeviceHandle* handle, CPartitionInfo* ou
     return count;
 }
 
+size_t disk_analyzer_scan_filesystems(DiskDeviceHandle* handle, CFilesystemCandidate* out_candidates, size_t max_count) {
+    if (!handle || !handle->dev || !out_candidates || max_count == 0) return 0;
+
+    auto candidates = FileSystemFactory::ScanFilesystems(handle->dev);
+    size_t count = std::min(max_count, candidates.size());
+    for (size_t i = 0; i < count; ++i) {
+        const auto& src = candidates[i];
+        CFilesystemCandidate& dst = out_candidates[i];
+        dst.offset = src.offset;
+        dst.size_bytes = src.size_bytes;
+        dst.confidence = src.confidence;
+        std::strncpy(dst.fs_type, src.fs_type.c_str(), sizeof(dst.fs_type) - 1);
+        dst.fs_type[sizeof(dst.fs_type) - 1] = '\0';
+        std::strncpy(dst.source, src.source.c_str(), sizeof(dst.source) - 1);
+        dst.source[sizeof(dst.source) - 1] = '\0';
+    }
+    return count;
+}
+
 DiskFsHandle* disk_analyzer_open_filesystem(DiskDeviceHandle* handle, uint64_t partition_offset, uint64_t partition_size) {
     if (!handle || !handle->dev) return nullptr;
 

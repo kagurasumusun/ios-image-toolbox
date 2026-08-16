@@ -24,6 +24,9 @@ void TestFilesystem() {
     bpb->total_sectors_16 = 2880;
     bpb->media_type = 0xF0;
     bpb->fat_size_16 = 9;
+    std::memcpy(fat_image.data() + 54, "FAT12", 5);
+    fat_image[510] = 0x55;
+    fat_image[511] = 0xAA;
 
     uint8_t* root_dir = fat_image.data() + (19 * 512);
     std::memcpy(root_dir, "TESTFILETXT", 11);
@@ -57,6 +60,29 @@ void TestFilesystem() {
     REQUIRE(extract_ok);
     REQUIRE(extracted_bytes.size() == 13);
     REQUIRE(std::memcmp(extracted_bytes.data(), "Hello World!\n", 13) == 0);
+
+
+    std::vector<uint8_t> partitioned_image(512 * 4096, 0);
+    partitioned_image[510] = 0x55;
+    partitioned_image[511] = 0xAA;
+    uint8_t* mbr_entry = partitioned_image.data() + 446;
+    mbr_entry[4] = 0x0C;
+    *reinterpret_cast<uint32_t*>(mbr_entry + 8) = 64;
+    *reinterpret_cast<uint32_t*>(mbr_entry + 12) = 2880;
+    std::memcpy(partitioned_image.data() + 64 * 512, fat_image.data(), fat_image.size());
+
+    std::vector<uint8_t> fake_fat_signature(512 * 16, 0);
+    std::memcpy(fake_fat_signature.data() + 54, "FAT12", 5);
+    auto fake_fat_dev = std::make_shared<MemoryBlockDevice>(fake_fat_signature, 512);
+    REQUIRE(FileSystemFactory::ProbeNameOnly(fake_fat_dev) == "Raw / Unknown");
+
+    auto partitioned_dev = std::make_shared<MemoryBlockDevice>(partitioned_image, 512);
+    auto candidates = FileSystemFactory::ScanFilesystems(partitioned_dev);
+    REQUIRE(candidates.size() == 1);
+    REQUIRE(candidates[0].offset == 64 * 512);
+    REQUIRE(candidates[0].source == "partition-1");
+    REQUIRE(candidates[0].confidence == 95);
+    REQUIRE(candidates[0].fs_type == "FAT12" || candidates[0].fs_type == "FAT16");
 
     std::cout << "Filesystem Parser & Extraction Test Passed!" << std::endl;
 }

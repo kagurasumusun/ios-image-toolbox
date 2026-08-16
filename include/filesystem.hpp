@@ -30,6 +30,14 @@ struct FileEntry {
     bool is_system{false};
 };
 
+struct FilesystemCandidate {
+    uint64_t offset{0};
+    uint64_t size_bytes{0};
+    std::string fs_type;
+    std::string source;
+    uint32_t confidence{0};
+};
+
 struct FilesystemDiagnostic {
     std::string fs_type;
     bool is_valid_superblock{false};
@@ -89,6 +97,7 @@ public:
     static std::shared_ptr<IFileSystem> ProbeAndOpen(std::shared_ptr<IBlockDevice> device);
     static std::string ProbeNameOnly(std::shared_ptr<IBlockDevice> device);
     static FilesystemDiagnostic DiagnoseFilesystem(std::shared_ptr<IBlockDevice> device);
+    static std::vector<FilesystemCandidate> ScanFilesystems(std::shared_ptr<IBlockDevice> device);
 };
 
 } // namespace disk_analyzer

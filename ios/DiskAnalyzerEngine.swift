@@ -41,6 +41,15 @@ public struct CarvedFileModel: Identifiable {
     public let extensionName: String
 }
 
+public struct FilesystemCandidateModel: Identifiable, Hashable {
+    public var id: String { "\(offset)-\(fsType)-\(source)" }
+    public let offset: UInt64
+    public let sizeBytes: UInt64
+    public let fsType: String
+    public let source: String
+    public let confidence: UInt32
+}
+
 public struct ChecksumModel {
     public let crc32: UInt32
     public let md5: String
@@ -69,6 +78,7 @@ public class DiskAnalyzerEngine: ObservableObject {
     @Published public var detectedMagic: String = "Unknown"
     @Published public var partitions: [PartitionModel] = []
     @Published public var mountedFsName: String = "None"
+    @Published public var filesystemCandidates: [FilesystemCandidateModel] = []
     @Published public var currentPathFiles: [FileEntryModel] = []
     @Published public var hexRows: [HexRowModel] = []
     @Published public var searchResults: [SearchResultModel] = []
@@ -113,6 +123,7 @@ public class DiskAnalyzerEngine: ObservableObject {
         self.isLoaded = true
 
         loadPartitions()
+        scanFilesystems()
         loadHexView(offset: 0, size: 512)
         calculateEntropy(offset: 0, size: min(totalSize, 1024 * 1024))
         classifyRegions(offset: 0, length: min(totalSize, 64 * 1024 * 1024), regionSize: 1024 * 1024)
@@ -136,6 +147,7 @@ public class DiskAnalyzerEngine: ObservableObject {
         detectedMagic = "Unknown"
         partitions.removeAll()
         currentPathFiles.removeAll()
+        filesystemCandidates.removeAll()
         hexRows.removeAll()
         searchResults.removeAll()
         carvedFiles.removeAll()
@@ -164,6 +176,19 @@ public class DiskAnalyzerEngine: ObservableObject {
                 typeGuid: guid,
                 bootable: p.bootable
             )
+        }
+    }
+
+    public func scanFilesystems() {
+        guard let dev = deviceHandle else { return }
+        var cCandidates = [CFilesystemCandidate](repeating: CFilesystemCandidate(), count: 64)
+        let count = disk_analyzer_scan_filesystems(dev, &cCandidates, 64)
+
+        filesystemCandidates = (0..<count).map { i in
+            let c = cCandidates[i]
+            let fsType = withUnsafeBytes(of: c.fs_type) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            let source = withUnsafeBytes(of: c.source) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            return FilesystemCandidateModel(offset: c.offset, sizeBytes: c.size_bytes, fsType: fsType, source: source, confidence: c.confidence)
         }
     }
 

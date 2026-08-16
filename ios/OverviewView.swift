@@ -17,6 +17,7 @@ struct OverviewView: View {
                 heroCard
                 readinessStrip
                 metricsGrid
+                filesystemCandidatesCard
                 regionMap
                 partitionQuickActions
             }
@@ -67,6 +68,7 @@ struct OverviewView: View {
             HStack(spacing: 10) {
                 ReadinessPill(title: "Container", isReady: engine.isLoaded, detail: engine.detectedMagic)
                 ReadinessPill(title: "Partitions", isReady: !engine.partitions.isEmpty, detail: "\(engine.partitions.count) found")
+                ReadinessPill(title: "Filesystems", isReady: !engine.filesystemCandidates.isEmpty, detail: "\(engine.filesystemCandidates.count) candidates")
                 ReadinessPill(title: "Regions", isReady: !engine.regionSummaries.isEmpty, detail: "\(engine.regionSummaries.count) sampled")
             }
         }
@@ -79,6 +81,57 @@ struct OverviewView: View {
             MetricCard(title: "High Entropy", value: "\(highEntropyRegions)", subtitle: "compressed/encrypted candidates", icon: "waveform.path.ecg")
             MetricCard(title: "Sparse / Blank", value: "\(sparseRegions)", subtitle: "zero/0xFF regions", icon: "circle.dashed")
         }
+    }
+
+    private var filesystemCandidatesCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Filesystem Candidates")
+                    .font(.headline)
+                Spacer()
+                Button("Rescan") { engine.scanFilesystems() }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+                    .disabled(!engine.isLoaded)
+            }
+
+            if engine.filesystemCandidates.isEmpty {
+                Text("No filesystem signatures were found at the whole-image or partition offsets. Use Hex, Search, Carving, and Region Intelligence for damaged or raw data.")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(engine.filesystemCandidates) { candidate in
+                    HStack(spacing: 12) {
+                        Image(systemName: "externaldrive.connected.to.line.below")
+                            .foregroundStyle(.teal)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(candidate.fsType)
+                                .fontWeight(.semibold)
+                            Text("\(candidate.source) • offset 0x\(String(candidate.offset, radix: 16).uppercased()) • \(ByteCountFormatter.diskString(candidate.sizeBytes))")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Text("\(candidate.confidence)%")
+                            .font(.caption)
+                            .fontWeight(.bold)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.teal.opacity(0.14))
+                            .clipShape(Capsule())
+                        Button("Mount") {
+                            _ = engine.mountFilesystem(partitionOffset: candidate.offset, partitionSize: candidate.sizeBytes)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                    Divider()
+                }
+            }
+        }
+        .padding()
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private var regionMap: some View {

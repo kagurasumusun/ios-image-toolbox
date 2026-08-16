@@ -34,6 +34,14 @@ typedef struct CPartitionInfo {
     char type_guid[40];
 } CPartitionInfo;
 
+typedef struct CFilesystemCandidate {
+    uint64_t offset;
+    uint64_t size_bytes;
+    char fs_type[32];
+    char source[32];
+    uint32_t confidence;
+} CFilesystemCandidate;
+
 typedef struct CFsInfo {
     char fs_name[32];
     uint64_t total_size_bytes;
@@ -106,6 +114,7 @@ uint32_t disk_analyzer_device_get_block_size(DiskDeviceHandle* handle);
 size_t disk_analyzer_device_read_at(DiskDeviceHandle* handle, uint64_t offset, void* buffer, size_t size);
 
 size_t disk_analyzer_get_partitions(DiskDeviceHandle* handle, CPartitionInfo* out_partitions, size_t max_count);
+size_t disk_analyzer_scan_filesystems(DiskDeviceHandle* handle, CFilesystemCandidate* out_candidates, size_t max_count);
 
 DiskFsHandle* disk_analyzer_open_filesystem(DiskDeviceHandle* handle, uint64_t partition_offset, uint64_t partition_size);
 void disk_analyzer_close_filesystem(DiskFsHandle* fs_handle);

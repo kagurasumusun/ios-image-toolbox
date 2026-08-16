@@ -49,6 +49,16 @@ int main(int argc, char* argv[]) {
         std::cout << "Size: " << dev->GetSize() << " bytes (" << (dev->GetSize() / (1024 * 1024)) << " MB)" << std::endl;
         std::cout << "Block Size: " << dev->GetBlockSize() << " bytes" << std::endl;
 
+        auto fs_candidates = FileSystemFactory::ScanFilesystems(dev);
+        std::cout << "\n=== Filesystems Detected (" << fs_candidates.size() << ") ===" << std::endl;
+        for (const auto& fs : fs_candidates) {
+            std::cout << " " << fs.fs_type
+                      << " | Offset: 0x" << std::hex << fs.offset << std::dec
+                      << " | Size: " << (fs.size_bytes / (1024 * 1024)) << " MB"
+                      << " | Source: " << fs.source
+                      << " | Confidence: " << fs.confidence << "%" << std::endl;
+        }
+
         auto parts = PartitionTableParser::Parse(dev);
         std::cout << "\n=== Partitions Detected (" << parts.size() << ") ===" << std::endl;
         for (const auto& p : parts) {
