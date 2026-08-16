@@ -19,10 +19,14 @@ static const FileSignature SIGNATURES[] = {
     {"\x89PNG\x0D\x0A\x1A\x0A", 8, "\x49\x45\x4E\x44\xAE\x42\x60\x82", 8, "PNG Image", "png", 10 * 1024 * 1024},
     {"%PDF-", 5, "%%EOF", 5, "PDF Document", "pdf", 50 * 1024 * 1024},
     {"PK\x03\x04", 4, "PK\x05\x06", 4, "ZIP Archive", "zip", 100 * 1024 * 1024},
+    {"7z\xBC\xAF\x27\x1C", 6, nullptr, 0, "7-Zip Archive", "7z", 100 * 1024 * 1024},
+    {"Rar!\x1A\x07", 6, nullptr, 0, "RAR Archive", "rar", 100 * 1024 * 1024},
     {"\x7F\x45\x4C\x46", 4, nullptr, 0, "ELF Executable", "elf", 20 * 1024 * 1024},
+    {"MZ", 2, nullptr, 0, "Windows PE Executable", "exe", 20 * 1024 * 1024},
     {"SQLite format 3\0", 16, nullptr, 0, "SQLite3 Database", "sqlite", 50 * 1024 * 1024},
     {"\x1F\x8B", 2, nullptr, 0, "GZIP Compressed Archive", "gz", 50 * 1024 * 1024},
-    {"\xCF\xFA\xED\xFE", 4, nullptr, 0, "Mach-O 64-bit Executable", "macho", 20 * 1024 * 1024}
+    {"\xCF\xFA\xED\xFE", 4, nullptr, 0, "Mach-O 64-bit Executable", "macho", 20 * 1024 * 1024},
+    {"fLaC", 4, nullptr, 0, "FLAC Audio", "flac", 30 * 1024 * 1024}
 };
 
 std::vector<CarvedFile> FileCarver::CarveFiles(IBlockDevice& device,

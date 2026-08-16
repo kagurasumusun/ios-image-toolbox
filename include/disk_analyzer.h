@@ -34,6 +34,12 @@ typedef struct CPartitionInfo {
     char type_guid[40];
 } CPartitionInfo;
 
+typedef struct CFsInfo {
+    char fs_name[32];
+    uint64_t total_size_bytes;
+    uint64_t free_space_bytes;
+} CFsInfo;
+
 typedef struct CFileEntry {
     char name[256];
     char path[1024];
@@ -95,6 +101,7 @@ DiskFsHandle* disk_analyzer_open_filesystem(DiskDeviceHandle* handle, uint64_t p
 void disk_analyzer_close_filesystem(DiskFsHandle* fs_handle);
 
 const char* disk_analyzer_fs_get_name(DiskFsHandle* fs_handle);
+bool disk_analyzer_fs_get_info(DiskFsHandle* fs_handle, CFsInfo* out_info);
 size_t disk_analyzer_fs_list_directory(DiskFsHandle* fs_handle, const char* path, CFileEntry* out_entries, size_t max_count);
 
 bool disk_analyzer_fs_extract_file(DiskFsHandle* fs_handle, const char* file_path, const char* dest_path);

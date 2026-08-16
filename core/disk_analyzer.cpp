@@ -181,6 +181,18 @@ const char* disk_analyzer_fs_get_name(DiskFsHandle* fs_handle) {
     return fs_handle->fs_name_cache.c_str();
 }
 
+bool disk_analyzer_fs_get_info(DiskFsHandle* fs_handle, CFsInfo* out_info) {
+    if (!fs_handle || !fs_handle->fs || !out_info) return false;
+
+    std::strncpy(out_info->fs_name, fs_handle->fs->GetFsName().c_str(), sizeof(out_info->fs_name) - 1);
+    out_info->fs_name[sizeof(out_info->fs_name) - 1] = '\0';
+
+    out_info->total_size_bytes = fs_handle->fs->GetTotalSize();
+    out_info->free_space_bytes = fs_handle->fs->GetFreeSpace();
+
+    return true;
+}
+
 size_t disk_analyzer_fs_list_directory(DiskFsHandle* fs_handle, const char* path, CFileEntry* out_entries, size_t max_count) {
     if (!fs_handle || !fs_handle->fs || !out_entries || max_count == 0) return 0;
 
