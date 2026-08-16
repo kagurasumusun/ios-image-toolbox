@@ -9,6 +9,7 @@
 #include "carving.hpp"
 #include "diff_engine.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <memory>
@@ -255,7 +256,8 @@ bool disk_analyzer_fs_extract_file(DiskFsHandle* fs_handle, const char* file_pat
 size_t disk_analyzer_get_hex_view(DiskDeviceHandle* handle, uint64_t offset, size_t size, CHexRow* out_rows, size_t max_rows) {
     if (!handle || !handle->dev || !out_rows || max_rows == 0) return 0;
 
-    auto rows = HexAnalyzer::GetHexView(*handle->dev, offset, size, 16);
+    const size_t bounded_size = std::min<size_t>(size, max_rows * 16);
+    auto rows = HexAnalyzer::GetHexView(*handle->dev, offset, bounded_size, 16);
     size_t count = std::min(max_rows, rows.size());
 
     for (size_t i = 0; i < count; ++i) {
@@ -288,9 +290,33 @@ size_t disk_analyzer_search_text(DiskDeviceHandle* handle, const char* query, bo
 
 double disk_analyzer_calculate_entropy(DiskDeviceHandle* handle, uint64_t offset, size_t size) {
     if (!handle || !handle->dev) return 0.0;
-    std::vector<uint8_t> buffer(size);
-    size_t read_bytes = handle->dev->ReadAt(offset, buffer.data(), size);
+    if (offset >= handle->dev->GetSize()) return 0.0;
+    constexpr size_t MAX_ENTROPY_SAMPLE = 16 * 1024 * 1024;
+    const size_t bounded_size = static_cast<size_t>(std::min<uint64_t>(std::min<uint64_t>(size, MAX_ENTROPY_SAMPLE), handle->dev->GetSize() - offset));
+    std::vector<uint8_t> buffer(bounded_size);
+    size_t read_bytes = handle->dev->ReadAt(offset, buffer.data(), bounded_size);
     return BinaryAnalyzer::CalculateEntropy(buffer.data(), read_bytes);
+}
+
+
+size_t disk_analyzer_classify_regions(DiskDeviceHandle* handle, uint64_t offset, uint64_t length, size_t region_size, CRegionSummary* out_regions, size_t max_regions) {
+    if (!handle || !handle->dev || !out_regions || max_regions == 0) return 0;
+
+    auto regions = RegionInspector::ClassifyRegions(*handle->dev, offset, length, region_size, max_regions);
+    size_t count = std::min(max_regions, regions.size());
+    for (size_t i = 0; i < count; ++i) {
+        const auto& src = regions[i];
+        CRegionSummary& dst = out_regions[i];
+        dst.offset = src.offset;
+        dst.length = src.length;
+        dst.entropy = src.entropy;
+        dst.printable_ratio = src.printable_ratio;
+        dst.dominant_byte = src.dominant_byte;
+        dst.dominant_ratio = src.dominant_ratio;
+        std::strncpy(dst.kind, RegionInspector::RegionKindName(src.kind), sizeof(dst.kind) - 1);
+        dst.kind[sizeof(dst.kind) - 1] = '\0';
+    }
+    return count;
 }
 
 bool disk_analyzer_calculate_checksums(DiskDeviceHandle* handle, uint64_t offset, size_t size, CChecksumResult* out_checksums) {

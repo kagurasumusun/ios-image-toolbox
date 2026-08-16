@@ -5,7 +5,7 @@
 
 #include "disk_analyzer.h"
 #include "block_device.hpp"
-#include "qcow2_block_device.hpp"
+#include "dmg_e01_block_device.hpp"
 #include "partition.hpp"
 #include "filesystem.hpp"
 #include "analysis.hpp"
@@ -19,7 +19,8 @@ void PrintUsage() {
               << "  ls <image> [path]         List files in image filesystem\n"
               << "  search <image> <text>     Search text pattern in image\n"
               << "  hex <image> <offset>      Show hex dump at offset\n"
-              << "  checksum <image>          Calculate CRC32, MD5, SHA256\n";
+              << "  checksum <image>          Calculate CRC32, MD5, SHA256\n"
+              << "  regions <image>           Classify image regions by entropy/content\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -31,13 +32,10 @@ int main(int argc, char* argv[]) {
     std::string cmd = argv[1];
     std::string image_path = argv[argc - 1];
 
-    std::shared_ptr<IBlockDevice> dev = RawBlockDevice::Open(image_path);
-    if (!dev) {
-        // Try QCOW2
-        auto base = RawBlockDevice::Open(image_path);
-        if (base) {
-            dev = Qcow2BlockDevice::Open(base);
-        }
+    std::shared_ptr<IBlockDevice> dev;
+    auto base = RawBlockDevice::Open(image_path);
+    if (base) {
+        dev = ImageContainerFactory::AutoDetectAndOpen(base);
     }
 
     if (!dev || !dev->IsValid()) {
@@ -92,6 +90,19 @@ int main(int argc, char* argv[]) {
         std::cout << "CRC32:  0x" << std::hex << cs.crc32 << std::dec << std::endl;
         std::cout << "MD5:    " << cs.md5_hex << std::endl;
         std::cout << "SHA256: " << cs.sha256_hex << std::endl;
+    } else if (cmd == "regions") {
+        std::cout << "=== Region Classification ===" << std::endl;
+        auto regions = RegionInspector::ClassifyRegions(*dev, 0, dev->GetSize(), 1024 * 1024, 128);
+        for (const auto& region : regions) {
+            std::cout << " Offset 0x" << std::hex << region.offset << std::dec
+                      << " | " << region.length << " B"
+                      << " | " << RegionInspector::RegionKindName(region.kind)
+                      << " | entropy=" << std::fixed << std::setprecision(3) << region.entropy
+                      << " | printable=" << std::setprecision(1) << (region.printable_ratio * 100.0) << "%"
+                      << " | dominant=0x" << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(region.dominant_byte)
+                      << std::dec << std::setfill(' ') << " (" << std::setprecision(1) << (region.dominant_ratio * 100.0) << "%)"
+                      << std::endl;
+        }
     } else {
         PrintUsage();
         return 1;

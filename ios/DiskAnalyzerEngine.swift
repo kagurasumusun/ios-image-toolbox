@@ -47,6 +47,17 @@ public struct ChecksumModel {
     public let sha256: String
 }
 
+public struct RegionSummaryModel: Identifiable {
+    public var id: UInt64 { offset }
+    public let offset: UInt64
+    public let length: UInt64
+    public let entropy: Double
+    public let printableRatio: Double
+    public let dominantByte: UInt8
+    public let dominantRatio: Double
+    public let kind: String
+}
+
 public class DiskAnalyzerEngine: ObservableObject {
     private var deviceHandle: OpaquePointer?
     private var fsHandle: OpaquePointer?
@@ -64,6 +75,8 @@ public class DiskAnalyzerEngine: ObservableObject {
     @Published public var carvedFiles: [CarvedFileModel] = []
     @Published public var lastChecksums: ChecksumModel?
     @Published public var currentEntropy: Double = 0.0
+    @Published public var regionSummaries: [RegionSummaryModel] = []
+    @Published public var statusMessage: String = "Open an image to begin analysis."
 
     public init() {}
 
@@ -102,6 +115,8 @@ public class DiskAnalyzerEngine: ObservableObject {
         loadPartitions()
         loadHexView(offset: 0, size: 512)
         calculateEntropy(offset: 0, size: min(totalSize, 1024 * 1024))
+        classifyRegions(offset: 0, length: min(totalSize, 64 * 1024 * 1024), regionSize: 1024 * 1024)
+        statusMessage = "Loaded and profiled \(URL(fileURLWithPath: path).lastPathComponent)"
         return true
     }
 
@@ -126,6 +141,8 @@ public class DiskAnalyzerEngine: ObservableObject {
         carvedFiles.removeAll()
         lastChecksums = nil
         mountedFsName = "None"
+        regionSummaries.removeAll()
+        statusMessage = "Open an image to begin analysis."
     }
 
     public func loadPartitions() {
@@ -156,11 +173,15 @@ public class DiskAnalyzerEngine: ObservableObject {
             disk_analyzer_close_filesystem(fs)
             fsHandle = nil
         }
-        guard let fs = disk_analyzer_open_filesystem(dev, partitionOffset, partitionSize) else { return false }
+        guard let fs = disk_analyzer_open_filesystem(dev, partitionOffset, partitionSize) else {
+            statusMessage = "No supported filesystem detected at selected range."
+            return false
+        }
         self.fsHandle = fs
         if let namePtr = disk_analyzer_fs_get_name(fs) {
             self.mountedFsName = String(cString: namePtr)
         }
+        statusMessage = "Mounted \(mountedFsName) filesystem."
         return true
     }
 
@@ -235,6 +256,26 @@ public class DiskAnalyzerEngine: ObservableObject {
     public func calculateEntropy(offset: UInt64, size: UInt64) {
         guard let dev = deviceHandle else { return }
         self.currentEntropy = disk_analyzer_calculate_entropy(dev, offset, Int(size))
+    }
+
+    public func classifyRegions(offset: UInt64, length: UInt64, regionSize: Int) {
+        guard let dev = deviceHandle else { return }
+        var cRegions = [CRegionSummary](repeating: CRegionSummary(), count: 128)
+        let count = disk_analyzer_classify_regions(dev, offset, length, regionSize, &cRegions, 128)
+
+        regionSummaries = (0..<count).map { i in
+            let r = cRegions[i]
+            let kind = withUnsafeBytes(of: r.kind) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+            return RegionSummaryModel(
+                offset: r.offset,
+                length: r.length,
+                entropy: r.entropy,
+                printableRatio: r.printable_ratio,
+                dominantByte: r.dominant_byte,
+                dominantRatio: r.dominant_ratio,
+                kind: kind
+            )
+        }
     }
 
     public func calculateChecksums(offset: UInt64, size: UInt64) {

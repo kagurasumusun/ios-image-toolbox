@@ -67,6 +67,16 @@ typedef struct CChecksumResult {
     char sha256_hex[65];
 } CChecksumResult;
 
+typedef struct CRegionSummary {
+    uint64_t offset;
+    uint64_t length;
+    double entropy;
+    double printable_ratio;
+    uint8_t dominant_byte;
+    double dominant_ratio;
+    char kind[24];
+} CRegionSummary;
+
 typedef struct CCarvedFile {
     uint64_t offset;
     uint64_t size_bytes;
@@ -109,6 +119,7 @@ bool disk_analyzer_fs_extract_file(DiskFsHandle* fs_handle, const char* file_pat
 size_t disk_analyzer_get_hex_view(DiskDeviceHandle* handle, uint64_t offset, size_t size, CHexRow* out_rows, size_t max_rows);
 size_t disk_analyzer_search_text(DiskDeviceHandle* handle, const char* query, bool case_sensitive, CSearchResult* out_results, size_t max_results);
 double disk_analyzer_calculate_entropy(DiskDeviceHandle* handle, uint64_t offset, size_t size);
+size_t disk_analyzer_classify_regions(DiskDeviceHandle* handle, uint64_t offset, uint64_t length, size_t region_size, CRegionSummary* out_regions, size_t max_regions);
 bool disk_analyzer_calculate_checksums(DiskDeviceHandle* handle, uint64_t offset, size_t size, CChecksumResult* out_checksums);
 const char* disk_analyzer_detect_magic(DiskDeviceHandle* handle, uint64_t offset);
 
