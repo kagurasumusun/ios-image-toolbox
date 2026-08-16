@@ -9,37 +9,37 @@ struct AppContentView: View {
         TabView {
             OverviewView(engine: engine)
                 .tabItem {
-                    Label("Overview", systemName: "info.circle")
+                    Label("Overview", systemImage: "info.circle")
                 }
 
             PartitionView(engine: engine)
                 .tabItem {
-                    Label("Partitions", systemName: "square.split.2x2")
+                    Label("Partitions", systemImage: "square.split.2x2")
                 }
 
             FileBrowserView(engine: engine)
                 .tabItem {
-                    Label("Files", systemName: "folder")
+                    Label("Files", systemImage: "folder")
                 }
 
             CarvingView(engine: engine)
                 .tabItem {
-                    Label("Carving", systemName: "wand.and.stars")
+                    Label("Carving", systemImage: "wand.and.stars")
                 }
 
             HexView(engine: engine)
                 .tabItem {
-                    Label("Hex", systemName: "viewfinder")
+                    Label("Hex", systemImage: "viewfinder")
                 }
 
             SearchView(engine: engine)
                 .tabItem {
-                    Label("Search", systemName: "magnifyingglass")
+                    Label("Search", systemImage: "magnifyingglass")
                 }
 
             BinaryAnalysisView(engine: engine)
                 .tabItem {
-                    Label("Diagnostics", systemName: "cpu")
+                    Label("Diagnostics", systemImage: "cpu")
                 }
         }
         .toolbar {
