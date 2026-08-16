@@ -45,6 +45,10 @@ bool FatFileSystem::ParseBpb() {
     root_dir_start_sector_ = fat_start_sector_ + (bpb_.num_fats * fat_size);
     data_start_sector_ = root_dir_start_sector_ + root_dir_sectors;
 
+    if (total_sectors <= (bpb_.reserved_sector_count + (bpb_.num_fats * fat_size) + root_dir_sectors)) {
+        return false;
+    }
+
     uint32_t data_sectors = total_sectors - (bpb_.reserved_sector_count + (bpb_.num_fats * fat_size) + root_dir_sectors);
     total_clusters_ = data_sectors / bpb_.sectors_per_cluster;
 
@@ -78,6 +82,7 @@ uint64_t FatFileSystem::GetFreeSpace() const {
 }
 
 uint64_t FatFileSystem::ClusterToSector(uint32_t cluster) const {
+    if (cluster < 2) return 0;
     return data_start_sector_ + (static_cast<uint64_t>(cluster - 2) * bpb_.sectors_per_cluster);
 }
 
@@ -93,13 +98,24 @@ uint32_t FatFileSystem::GetNextCluster(uint32_t cluster) {
         uint32_t next_cluster = 0;
         if (device_->ReadAt(fat_offset, &next_cluster, 4) == 4) {
             next_cluster &= 0x0FFFFFFF;
-            return (next_cluster >= 0x0FFFFFF8) ? 0xFFFFFFFF : next_cluster;
+            return (next_cluster >= 0x0FFFFFF8 || next_cluster < 2) ? 0xFFFFFFFF : next_cluster;
         }
     } else if (variant_ == FatVariant::Fat16) {
         uint64_t fat_offset = fat_start_sector_ * bpb_.bytes_per_sector + (cluster * 2);
         uint16_t next_cluster = 0;
         if (device_->ReadAt(fat_offset, &next_cluster, 2) == 2) {
-            return (next_cluster >= 0xFFF8) ? 0xFFFFFFFF : next_cluster;
+            return (next_cluster >= 0xFFF8 || next_cluster < 2) ? 0xFFFFFFFF : static_cast<uint32_t>(next_cluster);
+        }
+    } else if (variant_ == FatVariant::Fat12) {
+        uint64_t fat_offset = fat_start_sector_ * bpb_.bytes_per_sector + (cluster + (cluster / 2));
+        uint16_t entry = 0;
+        if (device_->ReadAt(fat_offset, &entry, 2) == 2) {
+            if (cluster & 1) {
+                entry >>= 4;
+            } else {
+                entry &= 0x0FFF;
+            }
+            return (entry >= 0x0FF8 || entry < 2) ? 0xFFFFFFFF : static_cast<uint32_t>(entry);
         }
     }
 
@@ -184,6 +200,8 @@ size_t FatFileSystem::ReadFile(const FileEntry& entry, uint64_t offset, void* bu
     size_t bytes_read = 0;
     while (bytes_read < to_read && current_cluster != 0xFFFFFFFF) {
         uint64_t sector = ClusterToSector(current_cluster);
+        if (sector == 0) break;
+
         uint64_t dev_offset = (sector * bpb_.bytes_per_sector) + cluster_offset;
         size_t chunk = std::min<size_t>(to_read - bytes_read, bytes_per_cluster_ - cluster_offset);
 
@@ -193,8 +211,11 @@ size_t FatFileSystem::ReadFile(const FileEntry& entry, uint64_t offset, void* bu
 
         bytes_read += chunk;
         cluster_offset = 0;
-        current_cluster = GetNextCluster(current_cluster);
 
+        // Single cluster file or end of chain check
+        if (bytes_read >= to_read) break;
+
+        current_cluster = GetNextCluster(current_cluster);
         if (++steps > total_clusters_ + 10) break; // Cycle detection
     }
 

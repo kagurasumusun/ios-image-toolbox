@@ -63,7 +63,7 @@ jobs:
             -import-objc-header include/disk_analyzer.h \
             ios/*.swift \
             -L build_ios/core \
-            -ldisk_analyzer_core -lz \
+            -ldisk_analyzer_core -lz -lc++ \
             -o build_app/Payload/DiskAnalyzer.app/DiskAnalyzer
 
           cat << 'EOF' > build_app/Payload/DiskAnalyzer.app/Info.plist
