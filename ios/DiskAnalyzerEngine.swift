@@ -84,15 +84,7 @@ public class DiskAnalyzerEngine: ObservableObject {
         close()
         self.imagePath = path
 
-        if let handle = disk_analyzer_open_vhd(path) {
-            self.deviceHandle = handle
-        } else if let handle = disk_analyzer_open_vmdk(path) {
-            self.deviceHandle = handle
-        } else if let handle = disk_analyzer_open_vdi(path) {
-            self.deviceHandle = handle
-        } else if let handle = disk_analyzer_open_qcow2(path) {
-            self.deviceHandle = handle
-        } else if let handle = disk_analyzer_open_raw(path) {
+        if let handle = disk_analyzer_open_auto(path) {
             self.deviceHandle = handle
         } else {
             return false

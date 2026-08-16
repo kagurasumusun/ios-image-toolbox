@@ -11,7 +11,7 @@ using namespace disk_analyzer;
 void TestPartition() {
     std::cout << "Testing MBR & GPT Partition Table Parsers..." << std::endl;
 
-    std::vector<uint8_t> mbr_data(512 * 100, 0);
+    std::vector<uint8_t> mbr_data(512 * 10000, 0);
     mbr_data[510] = 0x55;
     mbr_data[511] = 0xAA;
 
@@ -30,6 +30,13 @@ void TestPartition() {
     REQUIRE(parts[0].start_sector == 2048);
     REQUIRE(parts[0].sector_count == 4096);
     REQUIRE(parts[0].estimated_fs == PartitionType::Fat32);
+
+    auto unallocated = PartitionTableParser::GetUnallocatedRegions(dev, parts);
+    REQUIRE(!unallocated.empty());
+
+    auto summary = PartitionTableParser::SummarizeLayout(dev, parts);
+    REQUIRE(summary.partition_count == 1);
+    REQUIRE(summary.table_type == "MBR");
 
     std::cout << "MBR Partition Test Passed!" << std::endl;
 }

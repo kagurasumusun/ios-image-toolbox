@@ -77,6 +77,7 @@ typedef struct CDiffBlock {
 // API functions
 const char* disk_analyzer_version(void);
 
+DiskDeviceHandle* disk_analyzer_open_auto(const char* filepath);
 DiskDeviceHandle* disk_analyzer_open_raw(const char* filepath);
 DiskDeviceHandle* disk_analyzer_open_qcow2(const char* filepath);
 DiskDeviceHandle* disk_analyzer_open_vhd(const char* filepath);

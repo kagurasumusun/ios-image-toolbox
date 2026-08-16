@@ -2,6 +2,7 @@
 #include "block_device.hpp"
 #include "qcow2_block_device.hpp"
 #include "vhd_vmdk_vdi_block_device.hpp"
+#include "dmg_e01_block_device.hpp"
 #include "partition.hpp"
 #include "filesystem.hpp"
 #include "analysis.hpp"
@@ -25,7 +26,20 @@ struct DiskFsHandle {
 };
 
 const char* disk_analyzer_version(void) {
-    return "0.1.0";
+    return "0.2.0";
+}
+
+DiskDeviceHandle* disk_analyzer_open_auto(const char* filepath) {
+    if (!filepath) return nullptr;
+    try {
+        auto base = RawBlockDevice::Open(filepath);
+        if (!base) return nullptr;
+        auto auto_dev = ImageContainerFactory::AutoDetectAndOpen(base);
+        if (!auto_dev) return nullptr;
+        return new DiskDeviceHandle{auto_dev};
+    } catch (...) {
+        return nullptr;
+    }
 }
 
 DiskDeviceHandle* disk_analyzer_open_raw(const char* filepath) {

@@ -19,7 +19,10 @@ static const FileSignature SIGNATURES[] = {
     {"\x89PNG\x0D\x0A\x1A\x0A", 8, "\x49\x45\x4E\x44\xAE\x42\x60\x82", 8, "PNG Image", "png", 10 * 1024 * 1024},
     {"%PDF-", 5, "%%EOF", 5, "PDF Document", "pdf", 50 * 1024 * 1024},
     {"PK\x03\x04", 4, "PK\x05\x06", 4, "ZIP Archive", "zip", 100 * 1024 * 1024},
-    {"\x7F\x45\x4C\x46", 4, nullptr, 0, "ELF Executable", "elf", 20 * 1024 * 1024}
+    {"\x7F\x45\x4C\x46", 4, nullptr, 0, "ELF Executable", "elf", 20 * 1024 * 1024},
+    {"SQLite format 3\0", 16, nullptr, 0, "SQLite3 Database", "sqlite", 50 * 1024 * 1024},
+    {"\x1F\x8B", 2, nullptr, 0, "GZIP Compressed Archive", "gz", 50 * 1024 * 1024},
+    {"\xCF\xFA\xED\xFE", 4, nullptr, 0, "Mach-O 64-bit Executable", "macho", 20 * 1024 * 1024}
 };
 
 std::vector<CarvedFile> FileCarver::CarveFiles(IBlockDevice& device,
@@ -42,7 +45,7 @@ std::vector<CarvedFile> FileCarver::CarveFiles(IBlockDevice& device,
         size_t read_bytes = device.ReadAt(curr_pos, chunk.data(), to_read);
         if (read_bytes < 4) break;
 
-        for (size_t i = 0; i <= read_bytes - 4; ++i) {
+        for (size_t i = 0; i <= read_bytes - 2; ++i) {
             for (const auto& sig : SIGNATURES) {
                 if (i + sig.magic_len <= read_bytes && std::memcmp(chunk.data() + i, sig.magic, sig.magic_len) == 0) {
                     CarvedFile file{};

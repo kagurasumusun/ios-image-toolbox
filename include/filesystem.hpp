@@ -30,6 +30,17 @@ struct FileEntry {
     bool is_system{false};
 };
 
+struct FilesystemDiagnostic {
+    std::string fs_type;
+    bool is_valid_superblock{false};
+    bool is_clean_unmount{true};
+    bool has_corrupted_metadata{false};
+    uint64_t block_count{0};
+    uint64_t free_blocks{0};
+    uint32_t block_size{0};
+    std::string volume_label;
+};
+
 class IFileSystem {
 public:
     virtual ~IFileSystem() = default;
@@ -41,7 +52,6 @@ public:
     virtual bool ReadDirectory(const std::string& path, std::vector<FileEntry>& out_entries) = 0;
     virtual size_t ReadFile(const FileEntry& entry, uint64_t offset, void* buffer, size_t size) = 0;
 
-    // Streaming extraction callback: returns false if user cancelled or write failed
     using StreamProgressCallback = std::function<bool(uint64_t bytes_written, uint64_t total_bytes)>;
 
     virtual bool ExtractFile(const FileEntry& entry,
@@ -66,7 +76,7 @@ public:
             offset += read_bytes;
             if (progress_fn) {
                 if (!progress_fn(offset, total)) {
-                    return false; // Cancelled
+                    return false;
                 }
             }
         }
@@ -77,6 +87,8 @@ public:
 class FileSystemFactory {
 public:
     static std::shared_ptr<IFileSystem> ProbeAndOpen(std::shared_ptr<IBlockDevice> device);
+    static std::string ProbeNameOnly(std::shared_ptr<IBlockDevice> device);
+    static FilesystemDiagnostic DiagnoseFilesystem(std::shared_ptr<IBlockDevice> device);
 };
 
 } // namespace disk_analyzer
