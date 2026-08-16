@@ -57,6 +57,37 @@ public:
                                                  ProgressCallback progress_fn = nullptr);
 };
 
+
+// --- Region Diagnostics ---
+
+enum class RegionKind {
+    ZeroFilled,
+    FFilled,
+    MostlyText,
+    HighEntropy,
+    Mixed
+};
+
+struct RegionSummary {
+    uint64_t offset;
+    uint64_t length;
+    double entropy;
+    RegionKind kind;
+    double printable_ratio;
+    uint8_t dominant_byte;
+    double dominant_ratio;
+};
+
+class RegionInspector {
+public:
+    static std::vector<RegionSummary> ClassifyRegions(IBlockDevice& device,
+                                                       uint64_t offset = 0,
+                                                       uint64_t length = 0,
+                                                       size_t region_size = 1024 * 1024,
+                                                       size_t max_regions = 256);
+    static const char* RegionKindName(RegionKind kind);
+};
+
 // --- Binary Analysis ---
 
 struct ChecksumResult {
@@ -69,7 +100,7 @@ class BinaryAnalyzer {
 public:
     static std::string DetectMagicSignature(const uint8_t* header, size_t len);
     static double CalculateEntropy(const uint8_t* data, size_t len);
-    static std::vector<std::string> ExtractStrings(IBlockDevice& device, uint64_t offset, size_t length, size_t min_len = 4);
+    static std::vector<std::string> ExtractStrings(IBlockDevice& device, uint64_t offset, size_t length, size_t min_len = 4, size_t max_results = 1000);
     static ChecksumResult CalculateChecksums(IBlockDevice& device, uint64_t offset, size_t length);
 };
 
