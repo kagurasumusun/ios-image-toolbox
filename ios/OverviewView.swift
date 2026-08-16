@@ -317,7 +317,7 @@ struct MetricCard: View {
     }
 }
 
-private extension ByteCountFormatter {
+extension ByteCountFormatter {
     static let disk: ByteCountFormatter = {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
