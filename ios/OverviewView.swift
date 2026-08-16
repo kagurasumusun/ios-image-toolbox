@@ -17,7 +17,7 @@ struct OverviewView: View {
                         .bold()
 
                     HStack {
-                        Label(engine.detectedMagic, systemName: "doc.bin")
+                        Label(engine.detectedMagic, systemImage: "doc.fill")
                             .font(.subheadline)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 4)
