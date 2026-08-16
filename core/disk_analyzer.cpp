@@ -9,12 +9,14 @@
 #include "carving.hpp"
 #include "diff_engine.hpp"
 #include "signature_scanner.hpp"
+#include "report.hpp"
 
 #include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <memory>
 #include <vector>
+#include <cstdlib>
 
 using namespace disk_analyzer;
 
@@ -403,6 +405,23 @@ size_t disk_analyzer_scan_signatures(DiskDeviceHandle* handle, uint64_t offset, 
         dst.extension[sizeof(dst.extension) - 1] = '\0';
     }
     return count;
+}
+
+char* disk_analyzer_generate_json_report(DiskDeviceHandle* handle, const char* image_name) {
+    if (!handle || !handle->dev) return nullptr;
+    try {
+        auto report = AnalysisReportBuilder::BuildJson(handle->dev, image_name ? image_name : "");
+        char* out = static_cast<char*>(std::malloc(report.size() + 1));
+        if (!out) return nullptr;
+        std::memcpy(out, report.c_str(), report.size() + 1);
+        return out;
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void disk_analyzer_free_string(char* value) {
+    std::free(value);
 }
 
 size_t disk_analyzer_diff_devices(DiskDeviceHandle* handle1, DiskDeviceHandle* handle2, uint64_t offset, uint64_t length, CDiffBlock* out_diffs, size_t max_count) {

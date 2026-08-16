@@ -144,6 +144,8 @@ const char* disk_analyzer_detect_magic(DiskDeviceHandle* handle, uint64_t offset
 size_t disk_analyzer_carve_files(DiskDeviceHandle* handle, uint64_t offset, uint64_t length, CCarvedFile* out_carved, size_t max_count);
 size_t disk_analyzer_scan_signatures(DiskDeviceHandle* handle, uint64_t offset, uint64_t length, CSignatureHit* out_hits, size_t max_count);
 size_t disk_analyzer_diff_devices(DiskDeviceHandle* handle1, DiskDeviceHandle* handle2, uint64_t offset, uint64_t length, CDiffBlock* out_diffs, size_t max_count);
+char* disk_analyzer_generate_json_report(DiskDeviceHandle* handle, const char* image_name);
+void disk_analyzer_free_string(char* value);
 
 #ifdef __cplusplus
 }

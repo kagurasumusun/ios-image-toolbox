@@ -98,6 +98,7 @@ public class DiskAnalyzerEngine: ObservableObject {
     @Published public var currentEntropy: Double = 0.0
     @Published public var regionSummaries: [RegionSummaryModel] = []
     @Published public var statusMessage: String = "Open an image to begin analysis."
+    @Published public var jsonReport: String = ""
 
     public init() {}
 
@@ -139,6 +140,7 @@ public class DiskAnalyzerEngine: ObservableObject {
         calculateEntropy(offset: 0, size: min(totalSize, 1024 * 1024))
         classifyRegions(offset: 0, length: min(totalSize, 64 * 1024 * 1024), regionSize: 1024 * 1024)
         scanSignatures(offset: 0, length: min(totalSize, 256 * 1024 * 1024))
+        jsonReport = ""
         statusMessage = "Loaded and profiled \(URL(fileURLWithPath: path).lastPathComponent)"
         return true
     }
@@ -167,6 +169,7 @@ public class DiskAnalyzerEngine: ObservableObject {
         lastChecksums = nil
         mountedFsName = "None"
         regionSummaries.removeAll()
+        jsonReport = ""
         statusMessage = "Open an image to begin analysis."
     }
 
@@ -329,6 +332,18 @@ public class DiskAnalyzerEngine: ObservableObject {
                 kind: kind
             )
         }
+    }
+
+    public func generateJsonReport() -> Bool {
+        guard let dev = deviceHandle else { return false }
+        guard let reportPtr = disk_analyzer_generate_json_report(dev, URL(fileURLWithPath: imagePath).lastPathComponent) else {
+            statusMessage = "Failed to generate analysis report."
+            return false
+        }
+        defer { disk_analyzer_free_string(reportPtr) }
+        jsonReport = String(cString: reportPtr)
+        statusMessage = "Generated JSON analysis report."
+        return true
     }
 
     public func calculateChecksums(offset: UInt64, size: UInt64) {

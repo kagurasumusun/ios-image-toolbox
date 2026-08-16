@@ -9,6 +9,7 @@ private enum WorkbenchSection: String, CaseIterable, Identifiable {
     case carving = "Carving"
     case hex = "Hex"
     case search = "Search"
+    case report = "Report"
     case diagnostics = "Diagnostics"
 
     var id: String { rawValue }
@@ -22,6 +23,7 @@ private enum WorkbenchSection: String, CaseIterable, Identifiable {
         case .carving: return "wand.and.stars"
         case .hex: return "viewfinder"
         case .search: return "magnifyingglass"
+        case .report: return "doc.text.magnifyingglass"
         case .diagnostics: return "cpu"
         }
     }
@@ -115,6 +117,8 @@ struct AppContentView: View {
             HexView(engine: engine)
         case .search:
             SearchView(engine: engine)
+        case .report:
+            ReportView(engine: engine)
         case .diagnostics:
             BinaryAnalysisView(engine: engine)
         }

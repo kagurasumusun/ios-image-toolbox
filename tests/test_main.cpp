@@ -9,6 +9,7 @@ int main() {
     TestQcow2();
     TestAnalysis();
     TestSignatureScanner();
+    TestAnalysisReport();
     std::cout << "=== All C++ Disk Analyzer Tests Passed Successfully! ===" << std::endl;
     return 0;
 }

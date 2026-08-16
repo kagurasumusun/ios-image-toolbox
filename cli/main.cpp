@@ -10,6 +10,7 @@
 #include "filesystem.hpp"
 #include "analysis.hpp"
 #include "signature_scanner.hpp"
+#include "report.hpp"
 
 using namespace disk_analyzer;
 
@@ -22,7 +23,8 @@ void PrintUsage() {
               << "  hex <image> <offset>      Show hex dump at offset\n"
               << "  checksum <image>          Calculate CRC32, MD5, SHA256\n"
               << "  regions <image>           Classify image regions by entropy/content\n"
-              << "  signatures <image>        Scan embedded file, firmware, archive signatures\n";
+              << "  signatures <image>        Scan embedded file, firmware, archive signatures\n"
+              << "  report <image>            Emit consolidated JSON analysis report\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -96,6 +98,8 @@ int main(int argc, char* argv[]) {
             std::cout << " Offset 0x" << std::hex << r.offset << std::dec
                       << ": " << r.context_snippet << std::endl;
         }
+    } else if (cmd == "report") {
+        std::cout << AnalysisReportBuilder::BuildJson(dev, image_path);
     } else if (cmd == "signatures") {
         std::cout << "=== Signature Scan ===" << std::endl;
         auto hits = SignatureScanner::Scan(*dev, 0, std::min<uint64_t>(dev->GetSize(), 256 * 1024 * 1024), 256);
